@@ -22,6 +22,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <rte_malloc.h>
+#include <rte_ip.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -30,6 +31,8 @@
 #include "CodeLocation.h"
 #include "Homa/Util.h"
 #include "StringUtil.h"
+
+#define IP_DN_FRAGMENT_FLAG 0x0040
 
 namespace Homa {
 
@@ -263,22 +266,34 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
         WARNING("Failed to find ARP record for packet; dropping packet");
         return;
     }
+    printf("find mac\n");
     MacAddress& destMac = it->second;
     struct ether_hdr* ethHdr = rte_pktmbuf_mtod(mbuf, struct ether_hdr*);
     rte_memcpy(&ethHdr->d_addr, destMac.address, ETHER_ADDR_LEN);
     rte_memcpy(&ethHdr->s_addr, localMac.address, ETHER_ADDR_LEN);
-    ethHdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE_VLAN);
+    // ethHdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE_VLAN);
+    ethHdr->ether_type = rte_cpu_to_be_16(0x0800);
 
     // Fill out the PCP field and the Ethernet frame type of the
     // encapsulated frame (DEI and VLAN ID are not relevant and trivially
     // set to 0).
-    struct vlan_hdr* vlanHdr = reinterpret_cast<struct vlan_hdr*>(ethHdr + 1);
-    vlanHdr->vlan_tci = rte_cpu_to_be_16(PRIORITY_TO_PCP[priority]);
-    vlanHdr->eth_proto = rte_cpu_to_be_16(EthPayloadType::HOMA);
+    // struct vlan_hdr* vlanHdr = reinterpret_cast<struct vlan_hdr*>(ethHdr + 1);
+    // vlanHdr->vlan_tci = rte_cpu_to_be_16(PRIORITY_TO_PCP[priority]);
+    // vlanHdr->eth_proto = rte_cpu_to_be_16(EthPayloadType::HOMA);
 
     // Store our local IP address right before the payload.
-    *rte_pktmbuf_mtod_offset(mbuf, uint32_t*, PACKET_HDR_LEN - 4) =
-        (uint32_t)localIp;
+    struct ipv4_hdr* ipv4_hdr = rte_pktmbuf_mtod_offset(mbuf, struct ipv4_hdr*, sizeof(struct ether_hdr));
+    ipv4_hdr->version_ihl = (0x40 | 0x05);
+    // ipv4_hdr->type_of_service = TOS_7;
+    ipv4_hdr->fragment_offset = IP_DN_FRAGMENT_FLAG;
+    ipv4_hdr->next_proto_id = 6;
+    ipv4_hdr->time_to_live = 64;
+    ipv4_hdr->hdr_checksum = rte_ipv4_cksum(ipv4_hdr);
+    ipv4_hdr->src_addr = rte_be_to_cpu_32((uint32_t)localIp);
+    ipv4_hdr->dst_addr = rte_be_to_cpu_32((uint32_t)destination);
+    ipv4_hdr->total_length = rte_cpu_to_be_16(PACKET_HDR_LEN + pkt->base.length);
+    // *rte_pktmbuf_mtod_offset(mbuf, uint32_t*, PACKET_HDR_LEN - 4) =
+    //     (uint32_t)localIp;
 
     // In the normal case, we pre-allocate a pakcet's mbuf with enough
     // storage to hold the MAX_PAYLOAD_SIZE.  If the actual payload is
@@ -297,7 +312,8 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
     // loopback if src mac == dst mac
     if (localMac == destMac) {
         struct rte_mbuf* mbuf_clone = rte_pktmbuf_clone(mbuf, mbufPool);
-        if (unlikely(mbuf_clone == NULL)) {
+        printf("loopback\n");
+	if (unlikely(mbuf_clone == NULL)) {
             WARNING("Failed to clone packet for loopback; dropping packet");
             return;
         }
@@ -325,7 +341,8 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
         tx.stats.bufferedBytes += rte_pktmbuf_pkt_len(mbuf);
     }
     rte_eth_tx_buffer(port, 0, tx.buffer, mbuf);
-
+    rte_pktmbuf_dump(stdout, mbuf, rte_pktmbuf_pkt_len(mbuf));
+    printf("finish sending\n");
     // Flush packets now if the driver is not corked.
     if (corked.load() < 1) {
         rte_eth_tx_buffer_flush(port, 0, tx.buffer);
@@ -405,20 +422,29 @@ DpdkDriver::Impl::receivePackets(uint32_t maxPackets,
             ether_type = vlanHdr->eth_proto;
             headerLength += VLAN_TAG_LEN;
             payload += VLAN_TAG_LEN;
-        }
+        } 
+        struct ipv4_hdr *ipv4_hdr = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr*, headerLength);
         if (!hasHardwareFilter) {
             // Perform packet filtering by software to skip irrelevant
             // packets such as ipmi or kernel TCP/IP traffic.
-            if (ether_type != rte_cpu_to_be_16(EthPayloadType::HOMA)) {
+            // if (ether_type != rte_cpu_to_be_16(EthPayloadType::HOMA)) {
+            //     VERBOSE("packet filtered; ether_type = %x", ether_type);
+            //     rte_pktmbuf_free(m);
+            //     continue;
+            // }
+            if (ipv4_hdr->next_proto_id != 6) {
                 VERBOSE("packet filtered; ether_type = %x", ether_type);
                 rte_pktmbuf_free(m);
                 continue;
             }
         }
 
-        uint32_t srcIp = *rte_pktmbuf_mtod_offset(m, uint32_t*, headerLength);
-        headerLength += sizeof(srcIp);
-        payload += sizeof(srcIp);
+        // uint32_t srcIp = *rte_pktmbuf_mtod_offset(m, uint32_t*, headerLength);
+        // headerLength += sizeof(srcIp);
+        // payload += sizeof(srcIp);
+        uint32_t srcIp = rte_be_to_cpu_32(ipv4_hdr->src_addr);
+        headerLength += sizeof(struct ipv4_hdr);
+        payload += sizeof(struct ipv4_hdr);
         assert(rte_pktmbuf_pkt_len(m) >= headerLength);
         uint32_t length = rte_pktmbuf_pkt_len(m) - headerLength;
         assert(length <= MAX_PAYLOAD_SIZE);

@@ -75,7 +75,8 @@ const uint32_t VLAN_TAG_LEN = 4;
 const uint32_t IP_HDR_LEN = sizeof(IpAddress);
 
 // Size of Ethernet header including VLAN tag plus IP header, in bytes.
-const uint32_t PACKET_HDR_LEN = ETHER_HDR_LEN + VLAN_TAG_LEN + IP_HDR_LEN;
+// const uint32_t PACKET_HDR_LEN = ETHER_HDR_LEN + VLAN_TAG_LEN + IP_HDR_LEN;
+const uint32_t PACKET_HDR_LEN = ETHER_HDR_LEN + IP_HDR_LEN;
 
 // The MTU (Maximum Transmission Unit) size of an Ethernet frame, which is the
 // maximum size of the packet an Ethernet frame can carry in its payload. This
