@@ -26,6 +26,7 @@
 #include <rte_memcpy.h>
 #include <rte_ring.h>
 #include <rte_version.h>
+#include <rte_ip.h>
 
 #include <chrono>
 #include <unordered_map>
@@ -72,7 +73,8 @@ const uint32_t VLAN_TAG_LEN = 4;
 /// Strictly speaking, this DPDK driver is supposed to send/receive IP packets;
 /// however, it currently only records the source IP address right after the
 /// Ethernet header for simplicity.
-const uint32_t IP_HDR_LEN = sizeof(IpAddress);
+// const uint32_t IP_HDR_LEN = sizeof(IpAddress);
+const uint32_t IP_HDR_LEN = sizeof(struct ipv4_hdr);
 
 // Size of Ethernet header including VLAN tag plus IP header, in bytes.
 // const uint32_t PACKET_HDR_LEN = ETHER_HDR_LEN + VLAN_TAG_LEN + IP_HDR_LEN;

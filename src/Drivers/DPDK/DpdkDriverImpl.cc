@@ -22,7 +22,6 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <rte_malloc.h>
-#include <rte_ip.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -288,10 +287,12 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
     ipv4_hdr->fragment_offset = IP_DN_FRAGMENT_FLAG;
     ipv4_hdr->next_proto_id = 6;
     ipv4_hdr->time_to_live = 64;
-    ipv4_hdr->hdr_checksum = rte_ipv4_cksum(ipv4_hdr);
+
     ipv4_hdr->src_addr = rte_be_to_cpu_32((uint32_t)localIp);
     ipv4_hdr->dst_addr = rte_be_to_cpu_32((uint32_t)destination);
-    ipv4_hdr->total_length = rte_cpu_to_be_16(PACKET_HDR_LEN + pkt->base.length);
+    ipv4_hdr->total_length = rte_cpu_to_be_16(sizeof(ipv4_hdr) + pkt->base.length);
+    ipv4_hdr->hdr_checksum = 0;
+    ipv4_hdr->hdr_checksum = rte_ipv4_cksum(ipv4_hdr);
     // *rte_pktmbuf_mtod_offset(mbuf, uint32_t*, PACKET_HDR_LEN - 4) =
     //     (uint32_t)localIp;
 
@@ -342,10 +343,12 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
     }
     rte_eth_tx_buffer(port, 0, tx.buffer, mbuf);
     rte_pktmbuf_dump(stdout, mbuf, rte_pktmbuf_pkt_len(mbuf));
-    printf("finish sending\n");
+    printf("port:%d\n", port);
     // Flush packets now if the driver is not corked.
     if (corked.load() < 1) {
-        rte_eth_tx_buffer_flush(port, 0, tx.buffer);
+        int pkts = rte_eth_tx_buffer_flush(port, 0, tx.buffer);
+        printf("flush:%d pkts\n", pkts);
+
     }
 }
 
