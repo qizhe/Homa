@@ -90,6 +90,9 @@ const uint32_t MAX_PAYLOAD_SIZE = ETHER_MTU;
 constexpr uint16_t PRIORITY_TO_PCP[8] = {1 << 13, 0 << 13, 2 << 13, 3 << 13,
                                          4 << 13, 5 << 13, 6 << 13, 7 << 13};
 
+constexpr uint16_t PRIORITY_TO_TOS[8] = {0x20, 0x00, 0x40, 0x60,
+                                         0x80, 0xA0, 0xC0, 0xE0};
+
 // This enum define various ethernet payload types as it must be specified
 // in EthernetHeader field `etherType'.
 enum EthPayloadType {

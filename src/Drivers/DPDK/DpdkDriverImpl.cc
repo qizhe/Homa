@@ -265,7 +265,6 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
         WARNING("Failed to find ARP record for packet; dropping packet");
         return;
     }
-    printf("find mac\n");
     MacAddress& destMac = it->second;
     struct ether_hdr* ethHdr = rte_pktmbuf_mtod(mbuf, struct ether_hdr*);
     rte_memcpy(&ethHdr->d_addr, destMac.address, ETHER_ADDR_LEN);
@@ -283,7 +282,7 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
     // Store our local IP address right before the payload.
     struct ipv4_hdr* ipv4_hdr = rte_pktmbuf_mtod_offset(mbuf, struct ipv4_hdr*, sizeof(struct ether_hdr));
     ipv4_hdr->version_ihl = (0x40 | 0x05);
-    // ipv4_hdr->type_of_service = TOS_7;
+    ipv4_hdr->type_of_service = PRIORITY_TO_TOS[priority];
     ipv4_hdr->fragment_offset = IP_DN_FRAGMENT_FLAG;
     ipv4_hdr->next_proto_id = 6;
     ipv4_hdr->time_to_live = 64;
@@ -313,7 +312,7 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
     // loopback if src mac == dst mac
     if (localMac == destMac) {
         struct rte_mbuf* mbuf_clone = rte_pktmbuf_clone(mbuf, mbufPool);
-        printf("loopback\n");
+        // printf("loopback\n");
 	if (unlikely(mbuf_clone == NULL)) {
             WARNING("Failed to clone packet for loopback; dropping packet");
             return;
@@ -343,11 +342,11 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
     }
     rte_eth_tx_buffer(port, 0, tx.buffer, mbuf);
     rte_pktmbuf_dump(stdout, mbuf, rte_pktmbuf_pkt_len(mbuf));
-    printf("port:%d\n", port);
+    // printf("port:%d\n", port);
     // Flush packets now if the driver is not corked.
     if (corked.load() < 1) {
-        int pkts = rte_eth_tx_buffer_flush(port, 0, tx.buffer);
-        printf("flush:%d pkts\n", pkts);
+        rte_eth_tx_buffer_flush(port, 0, tx.buffer);
+        // printf("flush:%d pkts\n", pkts);
 
     }
 }
