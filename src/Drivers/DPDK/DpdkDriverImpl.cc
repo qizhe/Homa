@@ -341,7 +341,7 @@ DpdkDriver::Impl::sendPacket(Driver::Packet* packet, IpAddress destination,
         tx.stats.bufferedBytes += rte_pktmbuf_pkt_len(mbuf);
     }
     rte_eth_tx_buffer(port, 0, tx.buffer, mbuf);
-    rte_pktmbuf_dump(stdout, mbuf, rte_pktmbuf_pkt_len(mbuf));
+    // rte_pktmbuf_dump(stdout, mbuf, rte_pktmbuf_pkt_len(mbuf));
     // printf("port:%d\n", port);
     // Flush packets now if the driver is not corked.
     if (corked.load() < 1) {
